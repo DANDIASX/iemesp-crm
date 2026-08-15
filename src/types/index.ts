@@ -1,4 +1,5 @@
 export type PipelineStage = 'novo' | 'contatado' | 'matriculado' | 'perdido'
+export type ProdutoInteresse = 'curso_pratico' | 'plataforma' | 'ambos'
 
 export type Lead = {
   id: string
@@ -13,12 +14,16 @@ export type Lead = {
   trabalho: string | null
   residencia: string | null
   curso_interesse: string | null
+  produto_interesse: ProdutoInteresse | null
   instituicao: string | null
   cargo: string | null
   origem: string | null
   consentimento_lgpd: boolean | null
   pipeline_stage: PipelineStage
   stage_updated_at: string
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
 }
 
 export type StudentStatus = 'ativo' | 'concluido' | 'trancado' | 'desistente'

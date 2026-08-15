@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Lead, PipelineStage } from '../types'
+import type { Lead, PipelineStage, ProdutoInteresse } from '../types'
 
 const STAGES: { key: PipelineStage; label: string; badgeClass: string }[] = [
   { key: 'novo', label: 'Novo', badgeClass: 'bg-blue-100 text-blue-800' },
@@ -8,6 +8,12 @@ const STAGES: { key: PipelineStage; label: string; badgeClass: string }[] = [
   { key: 'matriculado', label: 'Matriculado', badgeClass: 'bg-emerald-100 text-emerald-800' },
   { key: 'perdido', label: 'Perdido', badgeClass: 'bg-red-100 text-red-800' },
 ]
+
+const PRODUTO_LABEL: Record<ProdutoInteresse, string> = {
+  curso_pratico: 'Curso Procedimentos 2.0',
+  plataforma: 'Plataforma',
+  ambos: 'Curso + Plataforma',
+}
 
 export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([])
@@ -110,8 +116,13 @@ export default function PipelinePage() {
               <div>
                 <p className="text-lg font-semibold text-iemesp-900">{lead.nome}</p>
                 <p className="text-sm text-slate-600">{lead.telefone}</p>
-                {lead.curso_interesse && (
-                  <p className="mt-1 text-sm text-slate-500">Interesse: {lead.curso_interesse}</p>
+                {lead.produto_interesse && (
+                  <p className="mt-1 text-sm text-slate-500">Interesse: {PRODUTO_LABEL[lead.produto_interesse]}</p>
+                )}
+                {lead.utm_source && (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Origem: {lead.utm_source}{lead.utm_campaign ? ` · ${lead.utm_campaign}` : ''}
+                  </p>
                 )}
               </div>
               <span
