@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, RequireAuth } from './lib/auth'
 import Layout from './components/Layout'
 import LoginPage from './components/LoginPage'
+import SetPasswordPage from './components/SetPasswordPage'
 import PipelinePage from './components/PipelinePage'
 import StudentsPage from './components/StudentsPage'
 import StudentDetailPage from './components/StudentDetailPage'
@@ -13,6 +14,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/definir-senha" element={<SetPasswordPage />} />
           <Route element={<RequireAuth />}>
             <Route element={<Layout />}>
               <Route path="/pipeline" element={<PipelinePage />} />
