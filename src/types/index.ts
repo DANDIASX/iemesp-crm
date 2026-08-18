@@ -1,4 +1,4 @@
-export type PipelineStage = 'novo' | 'contatado' | 'matriculado' | 'perdido'
+export type PipelineStage = 'novo' | 'contatado' | 'negociando' | 'aguardando_pagamento' | 'matriculado' | 'perdido'
 export type ProdutoInteresse = 'curso_pratico' | 'plataforma' | 'ambos'
 
 export type Lead = {
@@ -24,6 +24,10 @@ export type Lead = {
   utm_source: string | null
   utm_medium: string | null
   utm_campaign: string | null
+  valor_curso: number | null
+  pago: boolean
+  forma_pagamento: string | null
+  data_pagamento: string | null
 }
 
 export type StudentStatus = 'ativo' | 'concluido' | 'trancado' | 'desistente'
