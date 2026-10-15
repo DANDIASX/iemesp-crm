@@ -1,7 +1,26 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { daysSince, fillTemplate, messageTemplateFor, whatsappLink } from '../lib/whatsapp'
-import type { Lead, PipelineStage, ProdutoInteresse } from '../types'
+import { centavosToBRL } from '../lib/currency'
+import type { Curso, Lead, PedidoComRelacoes, PipelineStage, ProdutoInteresse } from '../types'
+
+const SITE_URL = 'https://formulario.iemesp.com.br'
+
+const PEDIDO_STATUS_LABEL: Record<PedidoComRelacoes['status'], string> = {
+  pendente: 'Pendente',
+  aprovado: 'Aprovado',
+  recusado: 'Recusado',
+  cancelado: 'Cancelado',
+  reembolsado: 'Reembolsado',
+}
+
+const PEDIDO_STATUS_BADGE: Record<PedidoComRelacoes['status'], string> = {
+  pendente: 'bg-slate-100 text-slate-600',
+  aprovado: 'bg-emerald-100 text-emerald-800',
+  recusado: 'bg-red-100 text-red-800',
+  cancelado: 'bg-slate-100 text-slate-600',
+  reembolsado: 'bg-purple-100 text-purple-800',
+}
 
 const STAGES: { key: PipelineStage; label: string; badgeClass: string }[] = [
   { key: 'novo', label: 'Novo', badgeClass: 'bg-blue-100 text-blue-800' },
@@ -32,9 +51,59 @@ export default function PipelinePage() {
   const [valor, setValor] = useState('')
   const [forma, setForma] = useState('PIX')
 
+  const [cursos, setCursos] = useState<Curso[]>([])
+  const [pedidosExpandedId, setPedidosExpandedId] = useState<string | null>(null)
+  const [pedidosByLead, setPedidosByLead] = useState<Record<string, PedidoComRelacoes[]>>({})
+  const [loadingPedidos, setLoadingPedidos] = useState(false)
+
+  const [linkPickerId, setLinkPickerId] = useState<string | null>(null)
+  const [linkCursoSlug, setLinkCursoSlug] = useState('')
+  const [linkCupomCodigo, setLinkCupomCodigo] = useState('')
+  const [linkCopiedId, setLinkCopiedId] = useState<string | null>(null)
+
   useEffect(() => {
     fetchLeads()
+    loadCursos()
   }, [])
+
+  const loadCursos = async () => {
+    const { data } = await supabase.from('cursos').select('*').eq('ativo', true).order('titulo')
+    setCursos((data as Curso[]) || [])
+  }
+
+  const togglePedidos = async (lead: Lead) => {
+    if (pedidosExpandedId === lead.id) {
+      setPedidosExpandedId(null)
+      return
+    }
+    setPedidosExpandedId(lead.id)
+    if (pedidosByLead[lead.id]) return
+
+    setLoadingPedidos(true)
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('*, cursos(titulo), cupons(codigo)')
+      .eq('lead_id', lead.id)
+      .order('created_at', { ascending: false })
+    if (error) setMessage(`Erro ao carregar pedidos: ${error.message}`)
+    setPedidosByLead(prev => ({ ...prev, [lead.id]: (data as PedidoComRelacoes[]) || [] }))
+    setLoadingPedidos(false)
+  }
+
+  const openLinkPicker = (lead: Lead) => {
+    setLinkPickerId(lead.id)
+    setLinkCursoSlug(cursos[0]?.slug ?? '')
+    setLinkCupomCodigo('')
+    setLinkCopiedId(null)
+  }
+
+  const copyCheckoutLink = async (lead: Lead) => {
+    if (!linkCursoSlug) return
+    const url = new URL(`${SITE_URL}/checkout/${linkCursoSlug}`)
+    if (linkCupomCodigo.trim()) url.searchParams.set('cupom', linkCupomCodigo.trim())
+    await navigator.clipboard.writeText(url.toString())
+    setLinkCopiedId(lead.id)
+  }
 
   const fetchLeads = async () => {
     setLoading(true)
@@ -221,6 +290,19 @@ export default function PipelinePage() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={() => togglePedidos(lead)}
+                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+              >
+                {pedidosExpandedId === lead.id ? 'Ocultar pedidos' : 'Pedidos'}
+              </button>
+              <button
+                onClick={() => (linkPickerId === lead.id ? setLinkPickerId(null) : openLinkPicker(lead))}
+                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+              >
+                Link de checkout
+              </button>
+
               {messageTemplateFor(lead.pipeline_stage) && (
                 <>
                   <a
@@ -373,6 +455,73 @@ export default function PipelinePage() {
                 >
                   Cancelar
                 </button>
+              </div>
+            )}
+
+            {linkPickerId === lead.id && (
+              <div className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500">Curso</label>
+                  <select
+                    value={linkCursoSlug}
+                    onChange={e => setLinkCursoSlug(e.target.value)}
+                    className="mt-1 w-56 rounded border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    {cursos.length === 0 && <option value="">Nenhum curso ativo cadastrado</option>}
+                    {cursos.map(c => (
+                      <option key={c.id} value={c.slug}>{c.titulo}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500">Cupom (opcional)</label>
+                  <input
+                    value={linkCupomCodigo}
+                    onChange={e => setLinkCupomCodigo(e.target.value)}
+                    placeholder="Ex.: PARCEIRO10"
+                    className="mt-1 w-40 rounded border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  disabled={!linkCursoSlug}
+                  onClick={() => copyCheckoutLink(lead)}
+                  className="rounded-full bg-iemesp-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-iemesp-700 disabled:opacity-60"
+                >
+                  {linkCopiedId === lead.id ? 'Copiado!' : 'Copiar link'}
+                </button>
+                <button
+                  onClick={() => setLinkPickerId(null)}
+                  className="rounded-full px-4 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-200"
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+
+            {pedidosExpandedId === lead.id && (
+              <div className="mt-4 rounded-xl bg-slate-50 p-3">
+                {loadingPedidos && !pedidosByLead[lead.id] && (
+                  <p className="text-sm text-slate-500">Carregando pedidos...</p>
+                )}
+                {pedidosByLead[lead.id]?.length === 0 && (
+                  <p className="text-sm text-slate-500">Nenhum pedido de checkout para este lead ainda.</p>
+                )}
+                <div className="space-y-2">
+                  {pedidosByLead[lead.id]?.map(pedido => (
+                    <div key={pedido.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-medium text-iemesp-900">{pedido.cursos?.titulo ?? 'Curso removido'}</p>
+                        <p className="text-xs text-slate-500">
+                          {pedido.cupons?.codigo ? `Cupom ${pedido.cupons.codigo} · ` : ''}
+                          {centavosToBRL(pedido.valor_final_centavos)}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PEDIDO_STATUS_BADGE[pedido.status]}`}>
+                        {PEDIDO_STATUS_LABEL[pedido.status]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

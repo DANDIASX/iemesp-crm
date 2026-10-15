@@ -20,6 +20,7 @@ export default function Layout() {
           <nav className="flex flex-wrap items-center gap-2">
             <NavLink to="/pipeline" className={linkClass}>Leads</NavLink>
             <NavLink to="/alunos" className={linkClass}>Alunos</NavLink>
+            <NavLink to="/cupons" className={linkClass}>Cupons</NavLink>
             <button
               onClick={signOut}
               className="rounded-full px-5 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100"

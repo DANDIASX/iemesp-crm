@@ -7,6 +7,7 @@ import SetPasswordPage from './components/SetPasswordPage'
 import PipelinePage from './components/PipelinePage'
 import StudentsPage from './components/StudentsPage'
 import StudentDetailPage from './components/StudentDetailPage'
+import CuponsPage from './components/CuponsPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="/pipeline" element={<PipelinePage />} />
               <Route path="/alunos" element={<StudentsPage />} />
               <Route path="/alunos/:id" element={<StudentDetailPage />} />
+              <Route path="/cupons" element={<CuponsPage />} />
             </Route>
           </Route>
           <Route path="/" element={<Navigate to="/pipeline" replace />} />
