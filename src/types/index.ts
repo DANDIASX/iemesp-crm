@@ -70,7 +70,9 @@ export type Curso = {
   slug: string
   titulo: string
   preco_centavos: number
+  preco_pix_centavos: number | null
   max_parcelas: number
+  modalidade: 'presencial' | 'online'
   ativo: boolean
   created_at: string
 }

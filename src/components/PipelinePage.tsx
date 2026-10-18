@@ -1,26 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { daysSince, fillTemplate, messageTemplateFor, whatsappLink } from '../lib/whatsapp'
-import { centavosToBRL } from '../lib/currency'
-import type { Curso, Lead, PedidoComRelacoes, PipelineStage, ProdutoInteresse } from '../types'
-
-const SITE_URL = 'https://formulario.iemesp.com.br'
-
-const PEDIDO_STATUS_LABEL: Record<PedidoComRelacoes['status'], string> = {
-  pendente: 'Pendente',
-  aprovado: 'Aprovado',
-  recusado: 'Recusado',
-  cancelado: 'Cancelado',
-  reembolsado: 'Reembolsado',
-}
-
-const PEDIDO_STATUS_BADGE: Record<PedidoComRelacoes['status'], string> = {
-  pendente: 'bg-slate-100 text-slate-600',
-  aprovado: 'bg-emerald-100 text-emerald-800',
-  recusado: 'bg-red-100 text-red-800',
-  cancelado: 'bg-slate-100 text-slate-600',
-  reembolsado: 'bg-purple-100 text-purple-800',
-}
+import { daysSince, funilGrupoFor } from '../lib/whatsapp'
+import KanbanColumn from './KanbanColumn'
+import type { Curso, Lead, PipelineStage } from '../types'
 
 const STAGES: { key: PipelineStage; label: string; badgeClass: string }[] = [
   { key: 'novo', label: 'Novo', badgeClass: 'bg-blue-100 text-blue-800' },
@@ -31,96 +13,58 @@ const STAGES: { key: PipelineStage; label: string; badgeClass: string }[] = [
   { key: 'perdido', label: 'Perdido', badgeClass: 'bg-red-100 text-red-800' },
 ]
 
+const SECOES: { grupo: 'topo' | 'fundo' | 'perdido'; titulo: string; corTitulo: string }[] = [
+  { grupo: 'topo', titulo: 'Topo de funil', corTitulo: 'text-blue-800' },
+  { grupo: 'fundo', titulo: 'Fundo de funil', corTitulo: 'text-emerald-800' },
+  { grupo: 'perdido', titulo: 'Perdido', corTitulo: 'text-red-800' },
+]
+
 const STALE_CONTACT_STAGES: PipelineStage[] = ['novo', 'contatado', 'negociando']
 const STALE_CONTACT_DAYS = 3
 const STALE_PAYMENT_DAYS = 2
 
-const PRODUTO_LABEL: Record<ProdutoInteresse, string> = {
-  curso_pratico: 'Curso Procedimentos 2.0',
-  plataforma: 'Plataforma',
-  ambos: 'Curso + Plataforma',
-}
+type GrupoCurso = 'presencial' | 'outros'
 
 export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([])
+  const [cursos, setCursos] = useState<Curso[]>([])
+  const [presencialLeadIds, setPresencialLeadIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<PipelineStage>('novo')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
-  const [payingId, setPayingId] = useState<string | null>(null)
-  const [valor, setValor] = useState('')
-  const [forma, setForma] = useState('PIX')
-
-  const [cursos, setCursos] = useState<Curso[]>([])
-  const [pedidosExpandedId, setPedidosExpandedId] = useState<string | null>(null)
-  const [pedidosByLead, setPedidosByLead] = useState<Record<string, PedidoComRelacoes[]>>({})
-  const [loadingPedidos, setLoadingPedidos] = useState(false)
-
-  const [linkPickerId, setLinkPickerId] = useState<string | null>(null)
-  const [linkCursoSlug, setLinkCursoSlug] = useState('')
-  const [linkCupomCodigo, setLinkCupomCodigo] = useState('')
-  const [linkCopiedId, setLinkCopiedId] = useState<string | null>(null)
+  const [grupoCurso, setGrupoCurso] = useState<GrupoCurso>('presencial')
 
   useEffect(() => {
-    fetchLeads()
-    loadCursos()
+    load()
   }, [])
 
-  const loadCursos = async () => {
-    const { data } = await supabase.from('cursos').select('*').eq('ativo', true).order('titulo')
-    setCursos((data as Curso[]) || [])
-  }
-
-  const togglePedidos = async (lead: Lead) => {
-    if (pedidosExpandedId === lead.id) {
-      setPedidosExpandedId(null)
-      return
-    }
-    setPedidosExpandedId(lead.id)
-    if (pedidosByLead[lead.id]) return
-
-    setLoadingPedidos(true)
-    const { data, error } = await supabase
-      .from('pedidos')
-      .select('*, cursos(titulo), cupons(codigo)')
-      .eq('lead_id', lead.id)
-      .order('created_at', { ascending: false })
-    if (error) setMessage(`Erro ao carregar pedidos: ${error.message}`)
-    setPedidosByLead(prev => ({ ...prev, [lead.id]: (data as PedidoComRelacoes[]) || [] }))
-    setLoadingPedidos(false)
-  }
-
-  const openLinkPicker = (lead: Lead) => {
-    setLinkPickerId(lead.id)
-    setLinkCursoSlug(cursos[0]?.slug ?? '')
-    setLinkCupomCodigo('')
-    setLinkCopiedId(null)
-  }
-
-  const copyCheckoutLink = async (lead: Lead) => {
-    if (!linkCursoSlug) return
-    const url = new URL(`${SITE_URL}/checkout/${linkCursoSlug}`)
-    if (linkCupomCodigo.trim()) url.searchParams.set('cupom', linkCupomCodigo.trim())
-    await navigator.clipboard.writeText(url.toString())
-    setLinkCopiedId(lead.id)
-  }
-
-  const fetchLeads = async () => {
+  const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('leads')
-      .select('*')
-      .order('stage_updated_at', { ascending: false })
+    const [leadsRes, cursosRes, pedidosRes] = await Promise.all([
+      supabase.from('leads').select('*').order('stage_updated_at', { ascending: false }),
+      supabase.from('cursos').select('*').eq('ativo', true).order('titulo'),
+      supabase.from('pedidos').select('lead_id, cursos!inner(modalidade)').eq('cursos.modalidade', 'presencial'),
+    ])
 
-    if (error) {
-      setMessage(`Erro ao carregar leads: ${error.message}`)
-    } else {
-      setLeads((data as Lead[]) || [])
+    if (leadsRes.error) setMessage(`Erro ao carregar leads: ${leadsRes.error.message}`)
+    setLeads((leadsRes.data as Lead[]) || [])
+    setCursos((cursosRes.data as Curso[]) || [])
+
+    const ids = new Set<string>()
+    for (const p of (pedidosRes.data as { lead_id: string | null }[]) || []) {
+      if (p.lead_id) ids.add(p.lead_id)
     }
+    setPresencialLeadIds(ids)
+
     setLoading(false)
   }
 
-  const moveStage = async (lead: Lead, newStage: PipelineStage) => {
+  const isPresencial = (lead: Lead) =>
+    lead.produto_interesse === 'curso_pratico' ||
+    lead.produto_interesse === 'ambos' ||
+    presencialLeadIds.has(lead.id)
+
+  const onMoveStage = async (lead: Lead, newStage: PipelineStage) => {
     setUpdatingId(lead.id)
     setMessage('')
 
@@ -149,46 +93,36 @@ export default function PipelinePage() {
       }
     }
 
-    await fetchLeads()
+    await load()
     setUpdatingId(null)
   }
 
-  const openPaymentForm = (lead: Lead) => {
-    setPayingId(lead.id)
-    setValor(lead.valor_curso?.toString() ?? '')
-    setForma(lead.forma_pagamento ?? 'PIX')
-  }
-
-  const markPaid = async (lead: Lead) => {
+  const onMarkPaid = async (lead: Lead, payment: { valor_curso: number | null; forma_pagamento: string | null }) => {
     setUpdatingId(lead.id)
     const { error } = await supabase
       .from('leads')
-      .update({
-        pago: true,
-        valor_curso: valor ? Number(valor) : null,
-        forma_pagamento: forma || null,
-        data_pagamento: new Date().toISOString(),
-      })
+      .update({ ...payment, pago: true, data_pagamento: new Date().toISOString() })
       .eq('id', lead.id)
 
     if (error) setMessage(`Erro ao marcar pagamento: ${error.message}`)
-    setPayingId(null)
-    await fetchLeads()
+    await load()
     setUpdatingId(null)
   }
 
-  const copyMessage = async (lead: Lead) => {
-    const template = messageTemplateFor(lead.pipeline_stage)
-    if (!template) return
-    await navigator.clipboard.writeText(fillTemplate(template, lead))
+  const onDelete = async (lead: Lead) => {
+    setUpdatingId(lead.id)
+    const { error } = await supabase.from('leads').delete().eq('id', lead.id)
+    if (error) setMessage(`Erro ao excluir: ${error.message}`)
+    await load()
+    setUpdatingId(null)
   }
 
-  const leadsInTab = leads.filter(l => l.pipeline_stage === activeTab)
+  const leadsDoGrupo = leads.filter(l => (grupoCurso === 'presencial' ? isPresencial(l) : !isPresencial(l)))
 
-  const staleContact = leads.filter(
+  const staleContact = leadsDoGrupo.filter(
     l => STALE_CONTACT_STAGES.includes(l.pipeline_stage) && daysSince(l.stage_updated_at) >= STALE_CONTACT_DAYS
   )
-  const stalePayment = leads.filter(
+  const stalePayment = leadsDoGrupo.filter(
     l => l.pipeline_stage === 'aguardando_pagamento' && daysSince(l.stage_updated_at) >= STALE_PAYMENT_DAYS
   )
 
@@ -197,8 +131,27 @@ export default function PipelinePage() {
       <h1 className="text-3xl font-poppins font-bold text-iemesp-900">Leads</h1>
       <p className="mt-2 text-slate-600">Acompanhe cada contato desde o primeiro interesse até a matrícula.</p>
 
+      <div className="mt-6 flex gap-2">
+        <button
+          onClick={() => setGrupoCurso('presencial')}
+          className={`rounded-full px-5 py-2.5 text-sm font-semibold transition ${
+            grupoCurso === 'presencial' ? 'bg-iemesp-900 text-white' : 'bg-white text-iemesp-900 hover:bg-iemesp-900/10'
+          }`}
+        >
+          Curso Presencial ({leads.filter(isPresencial).length})
+        </button>
+        <button
+          onClick={() => setGrupoCurso('outros')}
+          className={`rounded-full px-5 py-2.5 text-sm font-semibold transition ${
+            grupoCurso === 'outros' ? 'bg-iemesp-900 text-white' : 'bg-white text-iemesp-900 hover:bg-iemesp-900/10'
+          }`}
+        >
+          Outros / Plataforma ({leads.filter(l => !isPresencial(l)).length})
+        </button>
+      </div>
+
       {(staleContact.length > 0 || stalePayment.length > 0) && (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {staleContact.length > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-800">
@@ -226,307 +179,40 @@ export default function PipelinePage() {
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {STAGES.map(stage => {
-          const count = leads.filter(l => l.pipeline_stage === stage.key).length
-          const isActive = activeTab === stage.key
-          return (
-            <button
-              key={stage.key}
-              onClick={() => setActiveTab(stage.key)}
-              className={`rounded-full px-5 py-3 text-sm font-semibold transition ${
-                isActive ? 'bg-iemesp-900 text-white' : 'bg-white text-iemesp-900 hover:bg-iemesp-900/10'
-              }`}
-            >
-              {stage.label} ({count})
-            </button>
-          )
-        })}
-      </div>
-
       {message && <p className="mt-4 text-sm text-red-600">{message}</p>}
 
-      <div className="mt-6 space-y-4">
-        {loading && <p className="text-slate-500">Carregando...</p>}
-
-        {!loading && leadsInTab.length === 0 && (
-          <div className="rounded-2xl bg-white p-8 text-center text-slate-500 shadow">
-            Nenhum lead nesse status por enquanto.
-          </div>
-        )}
-
-        {leadsInTab.map(lead => (
-          <div key={lead.id} className="rounded-2xl bg-white p-5 shadow">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-lg font-semibold text-iemesp-900">{lead.nome}</p>
-                <p className="text-sm text-slate-600">{lead.telefone}</p>
-                {lead.produto_interesse && (
-                  <p className="mt-1 text-sm text-slate-500">Interesse: {PRODUTO_LABEL[lead.produto_interesse]}</p>
-                )}
-                {lead.utm_source && (
-                  <p className="mt-0.5 text-xs text-slate-400">
-                    Origem: {lead.utm_source}{lead.utm_campaign ? ` · ${lead.utm_campaign}` : ''}
-                  </p>
-                )}
-                <p className="mt-1 text-xs text-slate-400">Há {daysSince(lead.stage_updated_at)} dias nesta fase</p>
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    STAGES.find(s => s.key === lead.pipeline_stage)?.badgeClass
-                  }`}
-                >
-                  {STAGES.find(s => s.key === lead.pipeline_stage)?.label}
-                </span>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    lead.pago ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {lead.pago ? 'Pago' : 'Não pago'}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => togglePedidos(lead)}
-                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
-              >
-                {pedidosExpandedId === lead.id ? 'Ocultar pedidos' : 'Pedidos'}
-              </button>
-              <button
-                onClick={() => (linkPickerId === lead.id ? setLinkPickerId(null) : openLinkPicker(lead))}
-                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
-              >
-                Link de checkout
-              </button>
-
-              {messageTemplateFor(lead.pipeline_stage) && (
-                <>
-                  <a
-                    href={whatsappLink(lead.telefone, fillTemplate(messageTemplateFor(lead.pipeline_stage)!, lead))}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                  >
-                    WhatsApp
-                  </a>
-                  <button
-                    onClick={() => copyMessage(lead)}
-                    className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
-                  >
-                    Copiar mensagem
-                  </button>
-                </>
-              )}
-
-              {lead.pipeline_stage === 'novo' && (
-                <>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'contatado')}
-                    className="rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
-                  >
-                    Marcar como Contatado
-                  </button>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'perdido')}
-                    className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-60"
-                  >
-                    Marcar como Perdido
-                  </button>
-                </>
-              )}
-
-              {lead.pipeline_stage === 'contatado' && (
-                <>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'negociando')}
-                    className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:opacity-60"
-                  >
-                    Marcar como Negociando
-                  </button>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'perdido')}
-                    className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-60"
-                  >
-                    Marcar como Perdido
-                  </button>
-                </>
-              )}
-
-              {lead.pipeline_stage === 'negociando' && (
-                <>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'aguardando_pagamento')}
-                    className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-60"
-                  >
-                    Marcar como Aguardando pagamento
-                  </button>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'perdido')}
-                    className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-60"
-                  >
-                    Marcar como Perdido
-                  </button>
-                </>
-              )}
-
-              {lead.pipeline_stage === 'aguardando_pagamento' && (
-                <>
-                  {!lead.pago && (
-                    <button
-                      disabled={updatingId === lead.id}
-                      onClick={() => openPaymentForm(lead)}
-                      className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                    >
-                      Marcar como pago
-                    </button>
-                  )}
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'matriculado')}
-                    className="rounded-full bg-iemesp-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-iemesp-700 disabled:opacity-60"
-                  >
-                    Marcar como Matriculado
-                  </button>
-                  <button
-                    disabled={updatingId === lead.id}
-                    onClick={() => moveStage(lead, 'perdido')}
-                    className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-60"
-                  >
-                    Marcar como Perdido
-                  </button>
-                </>
-              )}
-
-              {lead.pipeline_stage === 'matriculado' && (
-                <p className="text-sm text-emerald-700">Aluno matriculado — veja em "Alunos".</p>
-              )}
-
-              {lead.pipeline_stage === 'perdido' && (
-                <button
-                  disabled={updatingId === lead.id}
-                  onClick={() => moveStage(lead, 'novo')}
-                  className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-60"
-                >
-                  Reabrir como Novo
-                </button>
-              )}
-            </div>
-
-            {payingId === lead.id && (
-              <div className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">Valor pago (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={valor}
-                    onChange={e => setValor(e.target.value)}
-                    className="mt-1 w-32 rounded border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">Forma de pagamento</label>
-                  <input
-                    value={forma}
-                    onChange={e => setForma(e.target.value)}
-                    className="mt-1 w-40 rounded border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <button
-                  disabled={updatingId === lead.id}
-                  onClick={() => markPaid(lead)}
-                  className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  Confirmar pagamento
-                </button>
-                <button
-                  onClick={() => setPayingId(null)}
-                  className="rounded-full px-4 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-200"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
-
-            {linkPickerId === lead.id && (
-              <div className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">Curso</label>
-                  <select
-                    value={linkCursoSlug}
-                    onChange={e => setLinkCursoSlug(e.target.value)}
-                    className="mt-1 w-56 rounded border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    {cursos.length === 0 && <option value="">Nenhum curso ativo cadastrado</option>}
-                    {cursos.map(c => (
-                      <option key={c.id} value={c.slug}>{c.titulo}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">Cupom (opcional)</label>
-                  <input
-                    value={linkCupomCodigo}
-                    onChange={e => setLinkCupomCodigo(e.target.value)}
-                    placeholder="Ex.: PARCEIRO10"
-                    className="mt-1 w-40 rounded border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <button
-                  disabled={!linkCursoSlug}
-                  onClick={() => copyCheckoutLink(lead)}
-                  className="rounded-full bg-iemesp-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-iemesp-700 disabled:opacity-60"
-                >
-                  {linkCopiedId === lead.id ? 'Copiado!' : 'Copiar link'}
-                </button>
-                <button
-                  onClick={() => setLinkPickerId(null)}
-                  className="rounded-full px-4 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-200"
-                >
-                  Fechar
-                </button>
-              </div>
-            )}
-
-            {pedidosExpandedId === lead.id && (
-              <div className="mt-4 rounded-xl bg-slate-50 p-3">
-                {loadingPedidos && !pedidosByLead[lead.id] && (
-                  <p className="text-sm text-slate-500">Carregando pedidos...</p>
-                )}
-                {pedidosByLead[lead.id]?.length === 0 && (
-                  <p className="text-sm text-slate-500">Nenhum pedido de checkout para este lead ainda.</p>
-                )}
-                <div className="space-y-2">
-                  {pedidosByLead[lead.id]?.map(pedido => (
-                    <div key={pedido.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm">
-                      <div>
-                        <p className="font-medium text-iemesp-900">{pedido.cursos?.titulo ?? 'Curso removido'}</p>
-                        <p className="text-xs text-slate-500">
-                          {pedido.cupons?.codigo ? `Cupom ${pedido.cupons.codigo} · ` : ''}
-                          {centavosToBRL(pedido.valor_final_centavos)}
-                        </p>
-                      </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PEDIDO_STATUS_BADGE[pedido.status]}`}>
-                        {PEDIDO_STATUS_LABEL[pedido.status]}
-                      </span>
-                    </div>
+      {loading ? (
+        <p className="mt-6 text-slate-500">Carregando...</p>
+      ) : (
+        <div className="mt-6 space-y-6">
+          {SECOES.map(secao => {
+            const stagesDaSecao = STAGES.filter(s => funilGrupoFor(s.key) === secao.grupo)
+            const totalNaSecao = leadsDoGrupo.filter(l => funilGrupoFor(l.pipeline_stage) === secao.grupo).length
+            return (
+              <div key={secao.grupo}>
+                <h2 className={`mb-2 text-sm font-bold uppercase tracking-wide ${secao.corTitulo}`}>
+                  {secao.titulo} ({totalNaSecao})
+                </h2>
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {stagesDaSecao.map(stage => (
+                    <KanbanColumn
+                      key={stage.key}
+                      label={stage.label}
+                      badgeClass={stage.badgeClass}
+                      leads={leadsDoGrupo.filter(l => l.pipeline_stage === stage.key)}
+                      cursos={cursos}
+                      updatingId={updatingId}
+                      onMoveStage={onMoveStage}
+                      onMarkPaid={onMarkPaid}
+                      onDelete={onDelete}
+                    />
                   ))}
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
