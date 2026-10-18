@@ -31,6 +31,8 @@ export type Lead = {
   como_conheceu: string | null
   disponibilidade: string | null
   objetivo: string | null
+  instagram: string | null
+  tiktok: string | null
 }
 
 export type StudentStatus = 'ativo' | 'concluido' | 'trancado' | 'desistente'

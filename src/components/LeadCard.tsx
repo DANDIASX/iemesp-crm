@@ -138,6 +138,12 @@ export default function LeadCard({ lead, cursos, updating, onMoveStage, onMarkPa
               Instagram
             </button>
           </div>
+          {canal === 'instagram' && lead.instagram && (
+            <p className="text-xs font-semibold text-purple-700">{lead.instagram}</p>
+          )}
+          {canal === 'instagram' && !lead.instagram && (
+            <p className="text-xs text-amber-600">Lead não informou o Instagram.</p>
+          )}
           <p className="text-xs text-slate-600 whitespace-pre-wrap">{mensagemPronta}</p>
           <div className="flex flex-wrap gap-1.5">
             {canal === 'whatsapp' && (
