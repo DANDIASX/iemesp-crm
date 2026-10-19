@@ -95,11 +95,13 @@ export type Cupom = {
   created_at: string
 }
 
-export type PedidoStatus = 'pendente' | 'aprovado' | 'recusado' | 'cancelado' | 'reembolsado'
+export type PedidoStatus = 'pendente' | 'aprovado' | 'recusado' | 'cancelado' | 'reembolsado' | 'excedente'
+export type PerfilPedido = 'medico' | 'interno' | 'estudante'
 
 export type Pedido = {
   id: string
   curso_id: string
+  turma_id: string | null
   cupom_id: string | null
   lead_id: string | null
   nome: string
@@ -113,6 +115,13 @@ export type Pedido = {
   mp_payment_id: string | null
   utms: Record<string, unknown> | null
   consentimento_lgpd: boolean
+  perfil: PerfilPedido | null
+  crm_numero: string | null
+  crm_uf: string | null
+  crm_conferido: boolean
+  faculdade: string | null
+  ano_curso: string | null
+  parcelas: number | null
   created_at: string
   pago_em: string | null
 }
@@ -122,4 +131,19 @@ export type Pedido = {
 export type PedidoComRelacoes = Pedido & {
   cursos: { titulo: string } | null
   cupons: { codigo: string } | null
+}
+
+export type TurmaStatus = 'aberta' | 'esgotada' | 'encerrada'
+
+export type Turma = {
+  id: string
+  curso_id: string
+  slug: string
+  nome: string
+  data_turma: string
+  horario: string | null
+  local: string | null
+  vagas_total: number
+  status: TurmaStatus
+  created_at: string
 }

@@ -20,6 +20,7 @@ export default function Layout() {
           <nav className="flex flex-wrap items-center gap-2">
             <NavLink to="/pipeline" className={linkClass}>Leads</NavLink>
             <NavLink to="/alunos" className={linkClass}>Alunos</NavLink>
+            <NavLink to="/turmas" className={linkClass}>Turmas</NavLink>
             <NavLink to="/cupons" className={linkClass}>Cupons</NavLink>
             <button
               onClick={signOut}

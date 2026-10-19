@@ -16,6 +16,7 @@ const PEDIDO_STATUS_LABEL: Record<PedidoComRelacoes['status'], string> = {
   recusado: 'Recusado',
   cancelado: 'Cancelado',
   reembolsado: 'Reembolsado',
+  excedente: 'Excedente (turma lotou)',
 }
 
 const PEDIDO_STATUS_BADGE: Record<PedidoComRelacoes['status'], string> = {
@@ -24,6 +25,7 @@ const PEDIDO_STATUS_BADGE: Record<PedidoComRelacoes['status'], string> = {
   recusado: 'bg-red-100 text-red-800',
   cancelado: 'bg-slate-100 text-slate-600',
   reembolsado: 'bg-purple-100 text-purple-800',
+  excedente: 'bg-red-100 text-red-800',
 }
 
 const SITE_URL = 'https://formulario.iemesp.com.br'
