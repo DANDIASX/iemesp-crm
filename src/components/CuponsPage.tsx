@@ -108,6 +108,21 @@ export default function CuponsPage() {
     await load()
   }
 
+  const excluirCupom = async (cupom: Cupom) => {
+    if (!confirm(`Excluir o cupom "${cupom.codigo}"? Essa ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('cupons').delete().eq('id', cupom.id)
+    if (error) {
+      setMessage(
+        error.code === '23503'
+          ? `Não foi possível excluir "${cupom.codigo}" — ele já foi usado em algum pedido. Desative-o em vez de excluir.`
+          : `Erro ao excluir cupom: ${error.message}`
+      )
+    } else {
+      setMessage('')
+    }
+    await load()
+  }
+
   const abrirLink = (cupom: Cupom) => {
     setLinkAbertoId(cupom.id)
     setLinkCursoId(cupom.curso_id ?? cursos[0]?.id ?? '')
@@ -265,6 +280,12 @@ export default function CuponsPage() {
                   className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
                 >
                   {cupom.ativo ? 'Desativar' : 'Reativar'}
+                </button>
+                <button
+                  onClick={() => excluirCupom(cupom)}
+                  className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                >
+                  Excluir
                 </button>
               </div>
             </div>
