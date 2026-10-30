@@ -87,6 +87,7 @@ export type Cupom = {
   tipo: CupomTipo
   valor: number
   curso_id: string | null
+  parceiro: string | null
   valido_de: string | null
   valido_ate: string | null
   limite_usos: number | null
