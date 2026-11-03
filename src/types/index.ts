@@ -1,6 +1,15 @@
 export type PipelineStage = 'novo' | 'contatado' | 'negociando' | 'aguardando_pagamento' | 'matriculado' | 'perdido'
 export type ProdutoInteresse = 'curso_pratico' | 'plataforma' | 'ambos'
 
+export type GastoMidia = {
+  id: string
+  data: string
+  canal: string
+  campanha: string | null
+  valor_centavos: number
+  created_at: string
+}
+
 export type Lead = {
   id: string
   created_at: string
