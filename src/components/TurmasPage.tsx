@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Pedido, Turma } from '../types'
+import type { Pedido, PerfilPedido, Turma } from '../types'
 
 const STATUS_LABEL: Record<Pedido['status'], string> = {
   aprovado: 'Pago',
@@ -18,6 +18,12 @@ const STATUS_COLOR: Record<Pedido['status'], string> = {
   cancelado: 'bg-slate-100 text-slate-600',
   reembolsado: 'bg-slate-100 text-slate-600',
   excedente: 'bg-red-100 text-red-800',
+}
+
+const PERFIL_LABEL: Record<PerfilPedido, string> = {
+  medico: 'Médico',
+  interno: 'Interno',
+  estudante: 'Estudante',
 }
 
 const formatarData = (iso: string) => {
@@ -50,11 +56,25 @@ const baixarCsv = (turma: Turma, pedidos: Pedido[]) => {
   URL.revokeObjectURL(url)
 }
 
+type FormEdicao = {
+  nome: string
+  perfil: PerfilPedido | ''
+  crm_numero: string
+  crm_uf: string
+  faculdade: string
+}
+
+const formVazio: FormEdicao = { nome: '', perfil: '', crm_numero: '', crm_uf: '', faculdade: '' }
+
 export default function TurmasPage() {
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [form, setForm] = useState<FormEdicao>(formVazio)
+  const [salvando, setSalvando] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -75,6 +95,57 @@ export default function TurmasPage() {
     const { error } = await supabase.from('pedidos').update({ crm_conferido: !pedido.crm_conferido }).eq('id', pedido.id)
     if (error) {
       setMessage(`Erro ao atualizar: ${error.message}`)
+      return
+    }
+    await load()
+  }
+
+  const iniciarEdicao = (pedido: Pedido) => {
+    setEditandoId(pedido.id)
+    setForm({
+      nome: pedido.nome,
+      perfil: pedido.perfil ?? '',
+      crm_numero: pedido.crm_numero ?? '',
+      crm_uf: pedido.crm_uf ?? '',
+      faculdade: pedido.faculdade ?? '',
+    })
+    setMessage('')
+  }
+
+  const cancelarEdicao = () => {
+    setEditandoId(null)
+    setForm(formVazio)
+  }
+
+  const salvarEdicao = async (pedidoId: string) => {
+    if (!form.nome.trim()) {
+      setMessage('Informe um nome.')
+      return
+    }
+    setSalvando(true)
+    const { error } = await supabase.from('pedidos').update({
+      nome: form.nome.trim(),
+      perfil: form.perfil || null,
+      crm_numero: form.perfil === 'medico' ? (form.crm_numero.trim() || null) : null,
+      crm_uf: form.perfil === 'medico' ? (form.crm_uf.trim() || null) : null,
+      faculdade: form.perfil !== 'medico' ? (form.faculdade.trim() || null) : null,
+    }).eq('id', pedidoId)
+    setSalvando(false)
+
+    if (error) {
+      setMessage(`Erro ao salvar: ${error.message}`)
+      return
+    }
+    setEditandoId(null)
+    setForm(formVazio)
+    await load()
+  }
+
+  const excluirPedido = async (pedido: Pedido) => {
+    if (!confirm(`Excluir o pedido de "${pedido.nome}"? Essa ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('pedidos').delete().eq('id', pedido.id)
+    if (error) {
+      setMessage(`Erro ao excluir: ${error.message}`)
       return
     }
     await load()
@@ -147,31 +218,122 @@ export default function TurmasPage() {
                         <th className="pb-2 pr-3">CRM/UF ou Faculdade</th>
                         <th className="pb-2 pr-3">Status</th>
                         <th className="pb-2 pr-3">CRM conferido</th>
+                        <th className="pb-2 pr-3">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {pedidosTurma.map(p => (
-                        <tr key={p.id} className="border-t border-slate-100">
-                          <td className="py-2 pr-3">{p.nome}</td>
-                          <td className="py-2 pr-3">{p.perfil ?? '-'}</td>
-                          <td className="py-2 pr-3">
-                            {p.perfil === 'medico' ? `${p.crm_numero ?? '-'}/${p.crm_uf ?? '-'}` : (p.faculdade ?? '-')}
-                          </td>
-                          <td className="py-2 pr-3">
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[p.status]}`}>
-                              {STATUS_LABEL[p.status]}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3">
-                            <input
-                              type="checkbox"
-                              checked={p.crm_conferido}
-                              onChange={() => alternarConferido(p)}
-                              className="h-4 w-4"
-                            />
-                          </td>
-                        </tr>
-                      ))}
+                      {pedidosTurma.map(p => {
+                        const emEdicao = editandoId === p.id
+                        return (
+                          <tr key={p.id} className="border-t border-slate-100 align-top">
+                            {emEdicao ? (
+                              <>
+                                <td className="py-2 pr-3">
+                                  <input
+                                    value={form.nome}
+                                    onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+                                    className="w-36 rounded border border-slate-300 px-2 py-1"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <select
+                                    value={form.perfil}
+                                    onChange={e => setForm(f => ({ ...f, perfil: e.target.value as PerfilPedido | '' }))}
+                                    className="rounded border border-slate-300 px-2 py-1"
+                                  >
+                                    <option value="">-</option>
+                                    <option value="medico">Médico</option>
+                                    <option value="interno">Interno</option>
+                                    <option value="estudante">Estudante</option>
+                                  </select>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  {form.perfil === 'medico' ? (
+                                    <div className="flex gap-1">
+                                      <input
+                                        placeholder="CRM"
+                                        value={form.crm_numero}
+                                        onChange={e => setForm(f => ({ ...f, crm_numero: e.target.value }))}
+                                        className="w-20 rounded border border-slate-300 px-2 py-1"
+                                      />
+                                      <input
+                                        placeholder="UF"
+                                        value={form.crm_uf}
+                                        onChange={e => setForm(f => ({ ...f, crm_uf: e.target.value.toUpperCase() }))}
+                                        className="w-14 rounded border border-slate-300 px-2 py-1"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <input
+                                      placeholder="Faculdade"
+                                      value={form.faculdade}
+                                      onChange={e => setForm(f => ({ ...f, faculdade: e.target.value }))}
+                                      className="w-36 rounded border border-slate-300 px-2 py-1"
+                                    />
+                                  )}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[p.status]}`}>
+                                    {STATUS_LABEL[p.status]}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input type="checkbox" checked={p.crm_conferido} onChange={() => alternarConferido(p)} className="h-4 w-4" />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => salvarEdicao(p.id)}
+                                      disabled={salvando}
+                                      className="rounded-full bg-iemesp-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      onClick={cancelarEdicao}
+                                      className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-2 pr-3">{p.nome}</td>
+                                <td className="py-2 pr-3">{p.perfil ? PERFIL_LABEL[p.perfil] : '-'}</td>
+                                <td className="py-2 pr-3">
+                                  {p.perfil === 'medico' ? `${p.crm_numero ?? '-'}/${p.crm_uf ?? '-'}` : (p.faculdade ?? '-')}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[p.status]}`}>
+                                    {STATUS_LABEL[p.status]}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input type="checkbox" checked={p.crm_conferido} onChange={() => alternarConferido(p)} className="h-4 w-4" />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => iniciarEdicao(p)}
+                                      className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+                                    >
+                                      Editar
+                                    </button>
+                                    <button
+                                      onClick={() => excluirPedido(p)}
+                                      className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                    >
+                                      Excluir
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
