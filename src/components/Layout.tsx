@@ -18,6 +18,7 @@ export default function Layout() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <span className="text-xl font-poppins font-bold text-iemesp-900">CRM IEMESP</span>
           <nav className="flex flex-wrap items-center gap-2">
+            <NavLink to="/painel" className={linkClass}>Painel</NavLink>
             <NavLink to="/pipeline" className={linkClass}>Leads</NavLink>
             <NavLink to="/alunos" className={linkClass}>Alunos</NavLink>
             <NavLink to="/turmas" className={linkClass}>Turmas</NavLink>

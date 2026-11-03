@@ -9,6 +9,7 @@ import StudentsPage from './components/StudentsPage'
 import StudentDetailPage from './components/StudentDetailPage'
 import CuponsPage from './components/CuponsPage'
 import TurmasPage from './components/TurmasPage'
+import PainelPage from './components/PainelPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/alunos/:id" element={<StudentDetailPage />} />
               <Route path="/cupons" element={<CuponsPage />} />
               <Route path="/turmas" element={<TurmasPage />} />
+              <Route path="/painel" element={<PainelPage />} />
             </Route>
           </Route>
           <Route path="/" element={<Navigate to="/pipeline" replace />} />
