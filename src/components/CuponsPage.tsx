@@ -1,10 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Cupom, CupomTipo, Curso } from '../types'
+import { centavosToBRL } from '../lib/currency'
+import type { Cupom, CupomTipo, Curso, Pedido } from '../types'
 
 const TIPO_LABEL: Record<CupomTipo, string> = {
   percentual: '%',
   valor_fixo: 'R$',
+}
+
+const STATUS_LABEL: Record<Pedido['status'], string> = {
+  aprovado: 'Pago',
+  pendente: 'Pendente',
+  recusado: 'Recusado',
+  cancelado: 'Cancelado',
+  reembolsado: 'Reembolsado',
+  excedente: 'Excedente',
+}
+
+const STATUS_COLOR: Record<Pedido['status'], string> = {
+  aprovado: 'bg-emerald-100 text-emerald-800',
+  pendente: 'bg-amber-100 text-amber-800',
+  recusado: 'bg-slate-100 text-slate-600',
+  cancelado: 'bg-slate-100 text-slate-600',
+  reembolsado: 'bg-slate-100 text-slate-600',
+  excedente: 'bg-red-100 text-red-800',
 }
 
 const SITE_URL = 'https://formulario.iemesp.com.br'
@@ -26,8 +45,11 @@ const slugify = (texto: string) =>
 export default function CuponsPage() {
   const [cupons, setCupons] = useState<Cupom[]>([])
   const [cursos, setCursos] = useState<Curso[]>([])
+  const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+
+  const [usosAbertoId, setUsosAbertoId] = useState<string | null>(null)
 
   const [codigo, setCodigo] = useState('')
   const [tipo, setTipo] = useState<CupomTipo>('percentual')
@@ -49,14 +71,17 @@ export default function CuponsPage() {
 
   const load = async () => {
     setLoading(true)
-    const [cuponsRes, cursosRes] = await Promise.all([
+    const [cuponsRes, cursosRes, pedidosRes] = await Promise.all([
       supabase.from('cupons').select('*').order('created_at', { ascending: false }),
       supabase.from('cursos').select('*').order('titulo'),
+      supabase.from('pedidos').select('*').not('cupom_id', 'is', null).order('created_at', { ascending: false }),
     ])
 
     if (cuponsRes.error) setMessage(`Erro ao carregar cupons: ${cuponsRes.error.message}`)
+    if (pedidosRes.error) setMessage(`Erro ao carregar usos dos cupons: ${pedidosRes.error.message}`)
     setCupons((cuponsRes.data as Cupom[]) || [])
     setCursos((cursosRes.data as Curso[]) || [])
+    setPedidos((pedidosRes.data as Pedido[]) || [])
     setLoading(false)
   }
 
@@ -270,6 +295,12 @@ export default function CuponsPage() {
                   {cupom.ativo ? 'Ativo' : 'Desativado'}
                 </span>
                 <button
+                  onClick={() => setUsosAbertoId(usosAbertoId === cupom.id ? null : cupom.id)}
+                  className="rounded-full bg-iemesp-900/10 px-4 py-2 text-sm font-semibold text-iemesp-900 transition hover:bg-iemesp-900/20"
+                >
+                  {usosAbertoId === cupom.id ? 'Fechar' : `Ver usos (${pedidos.filter(p => p.cupom_id === cupom.id).length})`}
+                </button>
+                <button
                   onClick={() => linkAbertoId === cupom.id ? setLinkAbertoId(null) : abrirLink(cupom)}
                   className="rounded-full bg-iemesp-900/10 px-4 py-2 text-sm font-semibold text-iemesp-900 transition hover:bg-iemesp-900/20"
                 >
@@ -289,6 +320,45 @@ export default function CuponsPage() {
                 </button>
               </div>
             </div>
+
+            {usosAbertoId === cupom.id && (
+              <div className="mt-4 overflow-x-auto rounded-xl bg-slate-50 p-4">
+                {(() => {
+                  const usos = pedidos.filter(p => p.cupom_id === cupom.id)
+                  if (usos.length === 0) {
+                    return <p className="text-sm text-slate-400">Esse cupom ainda não foi usado em nenhuma inscrição.</p>
+                  }
+                  return (
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-xs text-slate-400">
+                          <th className="pb-2 pr-3">Nome</th>
+                          <th className="pb-2 pr-3">E-mail</th>
+                          <th className="pb-2 pr-3">Status</th>
+                          <th className="pb-2 pr-3">Valor pago</th>
+                          <th className="pb-2 pr-3">Data</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usos.map(p => (
+                          <tr key={p.id} className="border-t border-slate-200">
+                            <td className="py-2 pr-3 font-semibold text-iemesp-900">{p.nome}</td>
+                            <td className="py-2 pr-3 text-slate-500">{p.email}</td>
+                            <td className="py-2 pr-3">
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[p.status]}`}>
+                                {STATUS_LABEL[p.status]}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3">{centavosToBRL(p.valor_final_centavos)}</td>
+                            <td className="py-2 pr-3 text-slate-500">{new Date(p.created_at).toLocaleDateString('pt-BR')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                })()}
+              </div>
+            )}
 
             {linkAbertoId === cupom.id && (
               <div className="mt-4 rounded-xl bg-slate-50 p-4">
