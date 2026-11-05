@@ -53,6 +53,19 @@ export default function StudentsPage() {
     setLoading(false)
   }
 
+  const excluirAluno = async (e: React.MouseEvent, student: Student) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm(`Excluir o aluno "${student.nome}"? Isso também remove o progresso dele no curso. Essa ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('students').delete().eq('id', student.id)
+    if (error) {
+      setMessage(`Erro ao excluir aluno: ${error.message}`)
+      return
+    }
+    setMessage('')
+    await load()
+  }
+
   return (
     <div>
       <h1 className="text-3xl font-poppins font-bold text-iemesp-900">Alunos</h1>
@@ -84,9 +97,17 @@ export default function StudentsPage() {
                   <p className="text-lg font-semibold text-iemesp-900">{student.nome}</p>
                   <p className="text-sm text-slate-600">{student.telefone || student.email || '—'}</p>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[student.status]}`}>
-                  {STATUS_LABEL[student.status]}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[student.status]}`}>
+                    {STATUS_LABEL[student.status]}
+                  </span>
+                  <button
+                    onClick={e => excluirAluno(e, student)}
+                    className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4">
